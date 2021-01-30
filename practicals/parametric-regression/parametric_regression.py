@@ -73,19 +73,67 @@ def get_sklearn_lasso_estimate(X, y):
     """apply scikit-learn lasso. This should return an estimated theta_hat.
     """
     # here should go your code.
-    return
+    clf = Lasso(alpha=0.1)
+    clf.fit(X,y)
+    
+    return clf.coef_
 
 def get_mcmc_sample_for_laplace_prior(X, y):
     # This should return a pymc3 Trace object
-    return
+    with pm.Model() as laplace_model:
+        theta = pm.Laplace("theta", mu=0, b=.5, shape=X.shape[1]) # mu and b are hyperparameters
+        mu = tt.dot(X, theta)
+        y_obs = pm.Normal("y_obs", mu=mu, sigma=1, observed=y)
+        
+        trace = pm.sample(500, return_inferencedata=False) # we choose to sample 500 points
+        
+    return trace
 
 def get_mcmc_sample_for_horseshoe_prior(X, y):
     # This should return a pymc3 Trace object
-    return
+    with pm.Model() as horseshoe_model:
+        λ = pm.HalfCauchy('lambda', beta=1, shape=X.shape[1])
+        τ = pm.HalfCauchy('tau', beta=1)
+        σ = pm.Deterministic('horseshoe', τ*τ*λ*λ)
+        theta = pm.Normal('theta', mu=0, sd=σ, shape=X.shape[1])
+
+        mu = tt.dot(X, theta)
+        y_obs = pm.Normal("y_obs", mu=mu, sigma=1, observed=y)
+       
+        trace = pm.sample(1000, return_inferencedata=False) # we choose to sample 500 points
+        
+    return trace
 
 def get_mcmc_sample_for_finnish_horseshoe_prior(X, y):
     # This should return a pymc3 Trace object
-    return
+    m0=10
+    slab_scale = 3
+    slab_scale_squared=slab_scale*slab_scale
+    slab_degrees_of_freedom=25
+    half_slab_df=slab_degrees_of_freedom*0.5
+
+    with pm.Model() as finnish_horseshoe_prior:
+
+        tau0 = (m0 / (X.shape[1] - m0)) * (1 / np.sqrt(1.0 * X.shape[0]))
+
+        beta_tilde = pm.Normal('beta_tilde', mu=0, sd=1, shape=X.shape[1], testval=0.1)
+        lamda = pm.HalfCauchy('lamda', beta=1, shape=X.shape[1], testval=1.0)
+        tau_tilde = pm.HalfCauchy('tau_tilde', beta=1, testval=0.1)
+        c2_tilde = pm.InverseGamma('c2_tilde', alpha=half_slab_df, beta=half_slab_df, testval=0.5)
+
+
+        tau=pm.Deterministic('tau', tau_tilde*tau0)
+        c2=pm.Deterministic('c2',slab_scale_squared*c2_tilde)
+        lamda_tilde =pm.Deterministic('lamda_tilde', pm.math.sqrt((c2 * pm.math.sqr(lamda) / (c2 + pm.math.sqr(tau) * pm.math.sqr(lamda)) ))) 
+        
+        theta = pm.Deterministic('theta', tau * lamda_tilde * beta_tilde)
+        mu = tt.dot(X, theta)
+        y_obs = pm.Normal("y_obs", mu=mu, sigma=1, observed=y)
+      
+        trace = pm.sample(1000, return_inferencedata=False) # we choose to sample 500 points
+        
+        
+    return trace
 
 if __name__ == '__main__':
 
